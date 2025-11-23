@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { X, Sparkles, Database } from 'lucide-react';
 import { Button } from './Button';
@@ -39,7 +40,10 @@ export const CreateDatasetModal: React.FC<CreateDatasetModalProps> = ({ isOpen, 
       tags: [task.split(' ')[0].toLowerCase(), 'new'],
       size: '0 KB',
       license: 'MIT',
-      id: `new-${Date.now()}`
+      id: `new-${Date.now()}`,
+      modality: 'Text',
+      format: 'json',
+      numRows: 0
     });
     onClose();
   };

@@ -1,3 +1,4 @@
+
 export enum TaskType {
   NLP = 'Natural Language Processing',
   CV = 'Computer Vision',
@@ -19,6 +20,10 @@ export interface Dataset {
   size: string;
   license: string;
   isPrivate?: boolean;
+  // New fields for filtering
+  modality: string;
+  format: string;
+  numRows: number;
 }
 
 export interface DatasetFile {

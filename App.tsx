@@ -1,5 +1,6 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
-import { Search, Filter, Plus, LayoutGrid, List as ListIcon, Bell, ChevronRight, Home, Database, Settings, Heart, Download, FileText, File, Copy, Eye, GitBranch, History, Shield, Folder } from 'lucide-react';
+import { Search, Filter, Plus, LayoutGrid, List as ListIcon, Bell, ChevronRight, Home, Database, Settings, Heart, Download, FileText, File, Copy, Eye, GitBranch, History, Shield, Folder, Image as ImageIcon, Mic, Video, Table, Box, Check } from 'lucide-react';
 import { Dataset, TaskType, ViewState, DatasetFile } from './types';
 import { Button } from './components/Button';
 import { DatasetCard } from './components/DatasetCard';
@@ -19,7 +20,10 @@ const MOCK_DATASETS: Dataset[] = [
     updatedAt: '2 days ago',
     tags: ['text-generation', 'transformers', 'safetensors', 'conversational'],
     size: '594 GB',
-    license: 'modified-mit'
+    license: 'modified-mit',
+    modality: 'Text',
+    format: 'safetensors',
+    numRows: 10000000
   },
   {
     id: '2',
@@ -32,7 +36,10 @@ const MOCK_DATASETS: Dataset[] = [
     updatedAt: '1 week ago',
     tags: ['math', 'reasoning', 'chain-of-thought'],
     size: '12 MB',
-    license: 'MIT'
+    license: 'MIT',
+    modality: 'Text',
+    format: 'json',
+    numRows: 8500
   },
   {
     id: '3',
@@ -45,7 +52,10 @@ const MOCK_DATASETS: Dataset[] = [
     updatedAt: '3 days ago',
     tags: ['audio', 'speech-to-text', 'multilingual'],
     size: '80 GB',
-    license: 'CC0'
+    license: 'CC0',
+    modality: 'Audio',
+    format: 'mp3',
+    numRows: 500000
   },
   {
     id: '4',
@@ -58,7 +68,10 @@ const MOCK_DATASETS: Dataset[] = [
     updatedAt: '5 hours ago',
     tags: ['instruction-tuning', 'llm', 'text'],
     size: '45 MB',
-    license: 'Apache 2.0'
+    license: 'Apache 2.0',
+    modality: 'Text',
+    format: 'json',
+    numRows: 52000
   },
   {
     id: '5',
@@ -71,7 +84,10 @@ const MOCK_DATASETS: Dataset[] = [
     updatedAt: '1 month ago',
     tags: ['object-detection', 'segmentation'],
     size: '18 GB',
-    license: 'Custom'
+    license: 'Custom',
+    modality: 'Image',
+    format: 'imagefolder',
+    numRows: 123000
   }
 ];
 
@@ -92,13 +108,39 @@ const MOCK_FILES: DatasetFile[] = [
   { name: 'model-00004-of-000062.safetensors', size: '9.81 GB', type: 'file', date: '17 days ago', commitMessage: 'initial commit', commitHash: 'd4e5f6g', tags: ['Safe', 'LFS'] },
 ];
 
+// Filter Constants
+const MODALITY_OPTIONS = [
+  { id: 'Text', label: 'Text', icon: FileText },
+  { id: 'Image', label: 'Image', icon: ImageIcon },
+  { id: 'Audio', label: 'Audio', icon: Mic },
+  { id: 'Video', label: 'Video', icon: Video },
+  { id: 'Tabular', label: 'Tabular', icon: Table },
+  { id: '3D', label: '3D', icon: Box },
+];
+
+const FORMAT_OPTIONS = ['json', 'csv', 'parquet', 'arrow', 'safetensors', 'imagefolder', 'mp3'];
+
+const SIZE_LABELS = [
+  { label: '1k', value: 1000 },
+  { label: '10k', value: 10000 },
+  { label: '100k', value: 100000 },
+  { label: '1M', value: 1000000 },
+  { label: '10M', value: 10000000 },
+  { label: '1B', value: 1000000000 },
+];
+
 const App: React.FC = () => {
   const [viewState, setViewState] = useState<ViewState>(ViewState.LIST);
   const [selectedDataset, setSelectedDataset] = useState<Dataset | null>(null);
   const [datasets, setDatasets] = useState<Dataset[]>(MOCK_DATASETS);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedTask, setSelectedTask] = useState<TaskType | 'All'>('All');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+
+  // Filters State
+  const [selectedTasks, setSelectedTasks] = useState<TaskType[]>([]);
+  const [selectedModalities, setSelectedModalities] = useState<string[]>([]);
+  const [selectedFormats, setSelectedFormats] = useState<string[]>([]);
+  const [minRows, setMinRows] = useState<number>(0);
 
   // Detail View Tabs
   const [activeTab, setActiveTab] = useState<'card' | 'files' | 'community'>('card');
@@ -107,13 +149,33 @@ const App: React.FC = () => {
     return datasets.filter(d => {
       const matchesSearch = d.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                             d.description.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesTask = selectedTask === 'All' || d.task === selectedTask;
-      return matchesSearch && matchesTask;
+      
+      const matchesTask = selectedTasks.length === 0 || selectedTasks.includes(d.task);
+      const matchesModality = selectedModalities.length === 0 || selectedModalities.includes(d.modality);
+      const matchesFormat = selectedFormats.length === 0 || selectedFormats.includes(d.format);
+      const matchesSize = d.numRows >= minRows;
+
+      return matchesSearch && matchesTask && matchesModality && matchesFormat && matchesSize;
     });
-  }, [datasets, searchQuery, selectedTask]);
+  }, [datasets, searchQuery, selectedTasks, selectedModalities, selectedFormats, minRows]);
 
   const handleCreateDataset = (newDataset: Dataset) => {
     setDatasets([newDataset, ...datasets]);
+  };
+
+  const toggleFilter = <T,>(item: T, current: T[], setter: (val: T[]) => void) => {
+    if (current.includes(item)) {
+      setter(current.filter(i => i !== item));
+    } else {
+      setter([...current, item]);
+    }
+  };
+
+  const formatNumber = (num: number) => {
+    if (num >= 1000000000) return (num / 1000000000).toFixed(0) + 'B';
+    if (num >= 1000000) return (num / 1000000).toFixed(0) + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(0) + 'k';
+    return num.toString();
   };
 
   const renderHeader = () => (
@@ -163,7 +225,7 @@ const App: React.FC = () => {
   );
 
   const renderListView = () => (
-    <main className="pt-24 px-6 pb-10 max-w-7xl mx-auto">
+    <main className="pt-24 px-6 pb-10 max-w-[1600px] mx-auto">
       {/* Hero / Actions */}
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
         <div>
@@ -171,54 +233,149 @@ const App: React.FC = () => {
           <p className="text-gray-500">Discover, download, and share open-source data.</p>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="secondary" icon={<Filter size={16} />}>Filter</Button>
           <Button variant="primary" icon={<Plus size={16} />} onClick={() => setIsCreateModalOpen(true)}>New Dataset</Button>
         </div>
       </div>
 
-      {/* Categories */}
-      <div className="flex gap-2 overflow-x-auto pb-4 mb-6 scrollbar-hide">
-        <button 
-          onClick={() => setSelectedTask('All')}
-          className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${selectedTask === 'All' ? 'bg-gray-900 text-white shadow-md' : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'}`}
-        >
-          All Categories
-        </button>
-        {Object.values(TaskType).map(task => (
-          <button 
-            key={task}
-            onClick={() => setSelectedTask(task)}
-            className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${selectedTask === task ? 'bg-gray-900 text-white shadow-md' : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'}`}
-          >
-            {task}
-          </button>
-        ))}
-      </div>
+      <div className="flex flex-col lg:flex-row gap-8 items-start">
+        {/* Sidebar Filters */}
+        <aside className="w-full lg:w-64 flex-shrink-0 space-y-8 lg:sticky lg:top-24 max-h-[calc(100vh-8rem)] lg:overflow-y-auto pb-10 scrollbar-hide">
+          
+          {/* Tasks */}
+          <div>
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Task</h3>
+            <div className="space-y-2">
+              {Object.values(TaskType).map((task) => (
+                <label key={task} className="flex items-center gap-2 cursor-pointer group">
+                  <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${selectedTasks.includes(task) ? 'bg-black border-black' : 'bg-white border-gray-300 group-hover:border-gray-400'}`}>
+                    {selectedTasks.includes(task) && <Check size={10} className="text-white" />}
+                  </div>
+                  <input 
+                    type="checkbox" 
+                    className="hidden" 
+                    checked={selectedTasks.includes(task)} 
+                    onChange={() => toggleFilter(task, selectedTasks, setSelectedTasks)} 
+                  />
+                  <span className={`text-sm ${selectedTasks.includes(task) ? 'text-gray-900 font-medium' : 'text-gray-600 group-hover:text-gray-900'}`}>{task}</span>
+                </label>
+              ))}
+            </div>
+          </div>
 
-      {/* Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredDatasets.map(dataset => (
-          <DatasetCard 
-            key={dataset.id} 
-            dataset={dataset} 
-            onClick={(d) => {
-              setSelectedDataset(d);
-              setViewState(ViewState.DETAIL);
-              window.scrollTo(0,0);
-            }} 
-          />
-        ))}
-      </div>
-      
-      {filteredDatasets.length === 0 && (
-        <div className="text-center py-20">
-           <div className="bg-gray-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-400">
-             <Database size={24} />
+          {/* Modalities */}
+          <div>
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Modalities</h3>
+            <div className="grid grid-cols-2 gap-2">
+              {MODALITY_OPTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  onClick={() => toggleFilter(opt.id, selectedModalities, setSelectedModalities)}
+                  className={`flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border text-xs font-medium transition-all ${
+                    selectedModalities.includes(opt.id) 
+                      ? 'bg-blue-50 border-blue-200 text-blue-700' 
+                      : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  <opt.icon size={14} />
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Size (rows) */}
+          <div>
+             <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Size (rows)</h3>
+             <div className="px-1">
+               <input 
+                  type="range" 
+                  min="0" 
+                  max={SIZE_LABELS.length - 1} 
+                  step="1" 
+                  value={SIZE_LABELS.findIndex(l => l.value === minRows) === -1 ? 0 : SIZE_LABELS.findIndex(l => l.value === minRows)}
+                  onChange={(e) => setMinRows(SIZE_LABELS[parseInt(e.target.value)]?.value || 0)}
+                  className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-black"
+               />
+               <div className="flex justify-between mt-2 text-[10px] text-gray-400 font-mono">
+                  {SIZE_LABELS.map((l, i) => (
+                     i % 2 === 0 && <span key={l.label} onClick={() => setMinRows(l.value)} className="cursor-pointer hover:text-gray-600">{l.label}</span>
+                  ))}
+               </div>
+               <div className="mt-2 text-xs font-medium text-gray-700 text-center bg-gray-100 py-1 rounded">
+                  {minRows === 0 ? 'Any size' : `> ${formatNumber(minRows)} rows`}
+               </div>
+             </div>
+          </div>
+
+          {/* Format */}
+          <div>
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Format</h3>
+            <div className="flex flex-wrap gap-1.5">
+              {FORMAT_OPTIONS.map((fmt) => (
+                <button
+                  key={fmt}
+                  onClick={() => toggleFilter(fmt, selectedFormats, setSelectedFormats)}
+                  className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                    selectedFormats.includes(fmt)
+                      ? 'bg-gray-900 text-white border-gray-900'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  {fmt}
+                </button>
+              ))}
+            </div>
+          </div>
+
+        </aside>
+
+        {/* Grid */}
+        <div className="flex-1 w-full">
+           {/* Results Count */}
+           <div className="mb-4 flex items-center justify-between">
+             <span className="text-sm text-gray-500 font-medium">{filteredDatasets.length} datasets</span>
+             <div className="lg:hidden">
+                <Button variant="secondary" size="sm" icon={<Filter size={14} />}>Filters</Button>
+             </div>
            </div>
-           <h3 className="text-gray-900 font-medium">No datasets found</h3>
-           <p className="text-gray-500 text-sm mt-1">Try adjusting your search or filters.</p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            {filteredDatasets.map(dataset => (
+              <DatasetCard 
+                key={dataset.id} 
+                dataset={dataset} 
+                onClick={(d) => {
+                  setSelectedDataset(d);
+                  setViewState(ViewState.DETAIL);
+                  window.scrollTo(0,0);
+                }} 
+              />
+            ))}
+          </div>
+          
+          {filteredDatasets.length === 0 && (
+            <div className="text-center py-20 border border-dashed border-gray-200 rounded-2xl bg-gray-50/50">
+              <div className="bg-white w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-400 shadow-sm border border-gray-100">
+                <Database size={24} />
+              </div>
+              <h3 className="text-gray-900 font-medium">No datasets found</h3>
+              <p className="text-gray-500 text-sm mt-1 max-w-xs mx-auto">Try adjusting your filters or search query to find what you're looking for.</p>
+              <button 
+                onClick={() => {
+                  setSelectedTasks([]);
+                  setSelectedModalities([]);
+                  setSelectedFormats([]);
+                  setMinRows(0);
+                  setSearchQuery('');
+                }}
+                className="mt-4 text-sm font-medium text-blue-600 hover:text-blue-700"
+              >
+                Clear all filters
+              </button>
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </main>
   );
 
